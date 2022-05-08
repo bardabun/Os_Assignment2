@@ -16,8 +16,8 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
-//aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-//hi
+extern uint64 cas(volatile void *addr, int expected, int newval);
+
 extern char trampoline[]; // trampoline.S
 
 // helps ensure that wakeups of wait()ing
@@ -88,11 +88,9 @@ myproc(void) {
 int
 allocpid() {
   int pid;
-  
-  acquire(&pid_lock);
-  pid = nextpid;
-  nextpid = nextpid + 1;
-  release(&pid_lock);
+  do {
+    pid = nextpid;
+  } while (cas(&nextpid , pid , pid+1));
 
   return pid;
 }
