@@ -652,3 +652,29 @@ procdump(void)
     printf("\n");
   }
 }
+
+int
+set_cpu(int cpu_num)
+{
+    struct proc* p = myproc();
+    int curr_cpu = p->cpu_num;
+    if(cas(&p->cpu_num, curr_cpu, cpu_num) !=0)
+        return -1;
+    yield();
+
+    return cpu_num;
+}
+
+int
+get_cpu()
+{
+  struct proc *p = myproc();
+  
+  int cpu_num;
+  acquire(&p->lock);
+  cpu_num = p->cpu_num;
+  release(&p->lock);
+  return cpu_num;
+}
+//void initlock(struct spinlock *, char *)
+
