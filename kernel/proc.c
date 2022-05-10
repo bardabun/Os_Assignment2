@@ -47,12 +47,18 @@ void
 procinit(void)
 {
   struct proc *p;
-  
+  struct cpu *c;
+
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
+  }
+
+    for(c = cpus; c < &cpus[NCPU]; c++) {
+      c->runnable_head = -1;
+      // initlock(&c->head_node_lock, "runnable_node");
   }
 }
 
@@ -678,3 +684,29 @@ get_cpu()
 }
 //void initlock(struct spinlock *, char *)
 
+int 
+add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock) {
+  int result;
+  acquire(lock);
+  if(*curr_proc_index == -1){
+    result = cas(curr_proc_index, -1, next_proc->proc_index) == 0;
+    release(lock);
+    return result;
+  }
+  acquire(&proc[*curr_proc_index].proc_lock);
+  release(lock);
+  // result = add_proc_to_list_rec(&proc[*curr_proc_index], next_proc);
+  // return result;
+
+  struct proc* curr_node = &proc[*curr_proc_index];
+  while(curr_node->next_proc_index != -1){
+    acquire(&proc[curr_node->next_proc_index].lock);
+    release(&curr_node->lock);
+    curr_node = &proc[curr_node->next_proc_index];
+  }
+
+  result = cas(&curr_node->next_proc_index, -1, next_proc->proc_index) == 0;
+  release(&curr_node->lock);
+  return result;
+
+}
