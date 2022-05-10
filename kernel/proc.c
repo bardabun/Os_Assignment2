@@ -688,6 +688,7 @@ int
 add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock) {
   int result;
   acquire(lock);
+  //acquire to next_proc? <-
   if(*curr_proc_index == -1){
     result = cas(curr_proc_index, -1, next_proc->proc_index) == 0;
     release(lock);
@@ -709,4 +710,45 @@ add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock)
   release(&curr_node->lock);
   return result;
 
+}
+
+int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct spinlock* lock) {
+  int result;
+  acquire(lock);
+  // acquire(&proc_to_remove->proc_lock);
+  if(*curr_proc_index == -1) 
+  {
+      release(lock);
+      // release(&proc_to_remove->proc_lock);
+      return -1;
+  }
+  acquire(&proc_to_remove->proc_lock);
+
+  if(*curr_proc_index == proc_to_remove->proc_index){
+      result = cas(curr_proc_index, proc_to_remove->proc_index, proc_to_remove->next_proc_index) == 0;
+      proc_to_remove->next_proc_index = -1;
+      release(&proc_to_remove->proc_lock);
+      release(lock);
+      return result;
+  }
+  release(&proc_to_remove->proc_lock);
+  acquire(&proc[*curr_proc_index].proc_lock);
+  release(lock);
+  // result = remove_proc_from_list_rec(&proc[*curr_proc_index], remove_proc);
+  
+  struct proc* curr_node = &proc[*curr_proc_index];
+  while(curr_node->next_proc_index != -1 && curr_node->next_proc_index != proc_to_remove->proc_index){
+    acquire(&proc[curr_node->next_proc_index].lock);
+    release(&curr_node->lock);
+    curr_node = &proc[curr_node->next_proc_index];
+  }
+  if(curr_node->next_proc_index != -1){
+    release(&curr_node->lock);
+    return -1;
+  }
+
+  result = cas(&curr_node->next_proc_index, proc_to_remove->proc_index, proc_to_remove->next_proc_index) == 0;
+  proc_to_remove->next_proc_index = -1;
+  release(&proc_to_remove->proc_lock);
+  return result;
 }
