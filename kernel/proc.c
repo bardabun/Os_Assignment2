@@ -20,6 +20,13 @@ extern uint64 cas(volatile void *addr, int expected, int newval);
 
 extern char trampoline[]; // trampoline.S
 
+int unused_head = -1;
+int sleeping_head = -1;
+int zombie_head = -1;
+struct spinlock lock_unused_list;
+struct spinlock lock_sleeping_list;
+struct spinlock lock_zombie_list;
+
 // helps ensure that wakeups of wait()ing
 // parents are not lost. helps obey the
 // memory model when using p->parent.
@@ -167,7 +174,12 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  remove_proc_from_list(&zombie_head, p, &lock_zombie_list); //sould we check for return value of -1???/?????????????????????
+
   p->state = UNUSED;
+
+  add_to_list(&unused_head, p, &lock_unused_list);
 }
 
 // Create a user page table for a given process,
@@ -318,7 +330,7 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   struct cpu *c = &cpus[np->cpu_num];
-  add_to_list(&c->runnable_head, np, &c->lock_head);
+  add_to_list(&c->runnable_head, np, &c->lock_runnable_list);
   release(&np->lock);
 
   return pid;
@@ -376,6 +388,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  add_to_list(&zombie_head, p, &lock_zombie_list);
 
   release(&wait_lock);
 
@@ -451,11 +464,11 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    int proc_num = remove_from_runnable(&c->runnable_head, &c->lock_head);
+    int proc_num = remove_first(&c->runnable_head, &c->lock_runnable_list);
     if(proc_num != -1){
       p = &proc[proc_num];
     }
-    
+
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -549,6 +562,9 @@ sleep(void *chan, struct spinlock *lk)
   // so it's okay to release lk.
 
   acquire(&p->lock);  //DOC: sleeplock1
+  //add process to sleeping list
+  add_to_list(&sleeping_head, p, &lock_sleeping_list);
+  
   release(lk);
 
   // Go to sleep.
@@ -571,15 +587,33 @@ void
 wakeup(void *chan)
 {
   struct proc *p;
+  struct cpu *c;
+  acquire(&lock_sleeping_list);
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    if(p != myproc()){
+  if(sleeping_head != -1){
+    p = &proc[sleeping_head];
+    release(&lock_sleeping_list);
+
+    int curr_proc;
+    do
+    {
+      int next_proc = p->next_proc_index;
       acquire(&p->lock);
-      if(p->state == SLEEPING && p->chan == chan) {
-        p->state = RUNNABLE;
+      if (p->chan == chan) {
+          if(remove_from_list(&sleeping_head, p, &lock_sleeping_list)){
+              p->state = RUNNABLE;
+              // p->cpu_num = update_cpu(p->cpu_num, 0);
+              c = &cpus[p->cpu_num];
+              add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
+          }
       }
       release(&p->lock);
-    }
+      curr_proc = next_proc;
+    } while(curr_proc != -1);
+  }
+  else{
+    release(&lock_sleeping_list);
+    return;
   }
 }
 
@@ -760,7 +794,7 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
   return result;
 }
 
-int remove_from_runnable(int* curr_proc_index, struct spinlock* lock) {
+int remove_first(int* curr_proc_index, struct spinlock* lock) {
     acquire(lock);
     
     if (*curr_proc_index != -1){
@@ -770,11 +804,11 @@ int remove_from_runnable(int* curr_proc_index, struct spinlock* lock) {
       
       *curr_proc_index = p->next_proc_index;
       p->next_proc_index = -1;
-      int run_this_proc = p->proc_index;
+      int output_proc = p->proc_index;
 
       release(&p->proc_lock);
       release(lock);
-      return run_this_proc;
+      return output_proc;
     }
     //didn't find a proc to run in the list
     else{
