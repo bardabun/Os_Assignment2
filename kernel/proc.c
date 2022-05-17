@@ -58,14 +58,18 @@ procinit(void)
 
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
+  int index = -1;
+  for(p = proc; p < &proc[NPROC]; p++, index++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
+
+      p->proc_index = index;
+      p->next_proc_index = -1;
+      add_to_list(&unused_head, p, &lock_unused_list);
   }
 
     for(c = cpus; c < &cpus[NCPU]; c++) {
       c->runnable_head = -1;
-      // initlock(&c->head_node_lock, "runnable_node");
   }
 }
 
@@ -117,18 +121,27 @@ allocproc(void)
 {
   struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == UNUSED) {
-      goto found;
-    } else {
-      release(&p->lock);
+    if(unused_head == -1){
+      return 0;
     }
-  }
-  return 0;
+
+    p=&proc[unused_head];
+    acquire(&p->lock);
+
+  // for(p = proc; p < &proc[NPROC]; p++) {
+  //   acquire(&p->lock);
+  //   if(p->state == UNUSED) {
+
+  //     goto found;
+  //   } else {
+  //     release(&p->lock);
+  //   }
+  // }
+  // return 0;
 
 found:
   p->pid = allocpid();
+  remove_first(&unused_head, &lock_unused_list); //different from the origin
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -259,6 +272,8 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  add_to_list(&cpus[0].runnable_head, p, &cpus[0].lock_runnable_list);
+
 
   release(&p->lock);
 }
