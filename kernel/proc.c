@@ -317,6 +317,8 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  struct cpu *c = &cpus[np->cpu_num];
+  add_to_list(&c->runnable_head, np, &c->lock_head);
   release(&np->lock);
 
   return pid;
@@ -449,6 +451,11 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
+    int proc_num = remove_from_runnable(&c->runnable_head, &c->lock_head);
+    if(proc_num != -1){
+      p = &proc[proc_num];
+    }
+    
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -751,4 +758,28 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
   proc_to_remove->next_proc_index = -1;
   release(&proc_to_remove->proc_lock);
   return result;
+}
+
+int remove_from_runnable(int* curr_proc_index, struct spinlock* lock) {
+    acquire(lock);
+    
+    if (*curr_proc_index != -1){
+      int index = *curr_proc_index;
+      struct proc *p = &proc[index];
+      acquire(&p->proc_lock);
+      
+      *curr_proc_index = p->next_proc_index;
+      p->next_proc_index = -1;
+      int run_this_proc = p->proc_index;
+
+      release(&p->proc_lock);
+      release(lock);
+      return run_this_proc;
+    }
+    //didn't find a proc to run in the list
+    else{
+
+      release(lock);
+      return -1;
+    }
 }
