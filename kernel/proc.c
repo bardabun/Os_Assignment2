@@ -782,14 +782,12 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
   acquire(&proc_to_remove->proc_lock);
 
   if(*curr_proc_index == proc_to_remove->proc_index){
-      // result = cas(curr_proc_index, proc_to_remove->proc_index, proc_to_remove->next_proc_index) == 0;
-      *curr_proc_index = proc_to_remove->proc_index;
+      // *curr_proc_index = proc_to_remove->proc_index;
       proc_to_remove->next_proc_index = -1;
       release(&proc_to_remove->proc_lock);
       release(lock);
       return 1;
   }
-  // release(&proc_to_remove->proc_lock);
   
   struct proc* curr_node = &proc[*curr_proc_index];
   acquire(&curr_node->proc_lock);
@@ -800,7 +798,8 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
     release(&curr_node->proc_lock);
     curr_node = &proc[curr_node->next_proc_index];
   }
-  if(curr_node->next_proc_index != -1){
+  if(curr_node->next_proc_index == -1){
+    release(&proc_to_remove->proc_lock);
     release(&curr_node->proc_lock);
     return -1;
   }
