@@ -26,6 +26,7 @@ struct cpu {
   int intena;                 // Were interrupts enabled before push_off()?
   int runnable_head;
   struct spinlock lock_runnable_list;
+  int counter;
 };
 
 extern struct cpu cpus[NCPU];

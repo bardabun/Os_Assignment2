@@ -18,6 +18,12 @@ extern void forkret(void);
 static void freeproc(struct proc *p);
 extern uint64 cas(volatile void *addr, int expected, int newval);
 
+#ifdef OFF
+int auto_balanced = 0;
+#else
+int auto_balanced = 1;
+#endif
+
 extern char trampoline[]; // trampoline.S
 
 int unused_head = -1;
@@ -329,7 +335,22 @@ fork(void)
 
   acquire(&wait_lock);
   np->parent = p;
-  np->cpu_num = p->cpu_num;
+  if(auto_balanced){
+    int cpu_num = 0;
+    int min = cpus[cpu_num].counter;
+    for(int i = 1; i < CPUS; i++){  //<!!!!!!!!!!!!!!!!!!!
+        if (min > cpus[i].counter){
+            min = cpus[i].counter;
+            cpu_num = i;
+        }
+    }
+    np->cpu_num = cpu_num;
+    while(cas(&(&cpus[cpu_num])->counter, &cpus[cpu_num].counter, &cpus[cpu_num].counter + 1) != 0);
+
+  }
+  else{
+    np->cpu_num = p->cpu_num;
+  }
   // printf("-> %d <-",np->cpu_num);
   release(&wait_lock);
 
@@ -384,9 +405,9 @@ exit(int status)
 
   acquire(&wait_lock);
 
-  // Give any children to init.
+  // Give any c.hildren to init.
   reparent(p);
-
+  
   // Parent might be sleeping in wait().
   wakeup(p->parent);
   
@@ -642,10 +663,10 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         if(remove_from_list(&sleeping_head, p, &lock_sleeping_list) == 1){
-        p->state = RUNNABLE;
+          p->state = RUNNABLE;
 
-        struct cpu *c = &cpus[p->cpu_num];
-        add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
+          struct cpu *c = &cpus[p->cpu_num];
+          add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
         }
       }
       release(&p->lock);

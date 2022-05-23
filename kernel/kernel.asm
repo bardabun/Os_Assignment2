@@ -5245,10 +5245,10 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
     80002696:	a1c080e7          	jalr	-1508(ra) # 800020ae <remove_from_list>
     8000269a:	4785                	li	a5,1
     8000269c:	fcf515e3          	bne	a0,a5,80002666 <kill+0x52>
-        p->state = RUNNABLE;
+          p->state = RUNNABLE;
     800026a0:	478d                	li	a5,3
     800026a2:	cc9c                	sw	a5,24(s1)
-        add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
+          add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
     800026a4:	58d8                	lw	a4,52(s1)
     800026a6:	00271793          	slli	a5,a4,0x2
     800026aa:	97ba                	add	a5,a5,a4
