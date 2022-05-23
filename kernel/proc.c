@@ -58,7 +58,7 @@ procinit(void)
 
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  int index = -1;
+  int index = 0;
   for(p = proc; p < &proc[NPROC]; p++, index++) {
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
@@ -328,6 +328,8 @@ fork(void)
 
   acquire(&wait_lock);
   np->parent = p;
+  np->cpu_num = p->cpu_num;
+  // printf("-> %d <-",np->cpu_num);
   release(&wait_lock);
 
   acquire(&np->lock);
@@ -470,8 +472,7 @@ scheduler(void)
     int proc_num = remove_first(&c->runnable_head, &c->lock_runnable_list);
     if(proc_num != -1){
       p = &proc[proc_num];
-    acquire(&p->lock);
-    if(p->state == RUNNABLE) {
+      acquire(&p->lock);
       // Switch to chosen process.  It is the process's job
       // to release its lock and then reacquire it
       // before jumping back to us.
@@ -482,10 +483,8 @@ scheduler(void)
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+      release(&p->lock);
     }
-    release(&p->lock);
-    }
-    
   }
 }
 
@@ -521,10 +520,11 @@ void
 yield(void)
 {
   struct proc *p = myproc();
-  struct cpu *c = &cpus[p->cpu_num];
+  struct cpu *c;
   acquire(&p->lock);
   p->state = RUNNABLE;
 
+  c = &cpus[p->cpu_num];
   add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
   sched();
   release(&p->lock);
@@ -732,9 +732,8 @@ get_cpu()
 void
 add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock) {
   acquire(lock);
-  //acquire to next_proc? <-
+
   if(*curr_proc_index == -1){
-    //result = cas(curr_proc_index, -1, next_proc->proc_index) == 0;
     *curr_proc_index = next_proc->proc_index;
     next_proc->next_proc_index = -1;
     release(lock);
@@ -743,12 +742,12 @@ add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock)
   struct proc* curr_node = &proc[*curr_proc_index];
   acquire(&curr_node->proc_lock);
   release(lock);
-  // result = add_proc_to_list_rec(&proc[*curr_proc_index], next_proc);
-  // return result;
+  
   while(curr_node->next_proc_index != -1){
     acquire(&proc[curr_node->next_proc_index].proc_lock);
     release(&curr_node->proc_lock);
     curr_node = &proc[curr_node->next_proc_index];
+    // printf("moving to: %d", curr_node->next_proc_index);
   }
 
   //result = cas(&curr_node->next_proc_index, -1, next_proc->proc_index) == 0;
