@@ -576,7 +576,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+  // printf("proc %d went to sleep\n", p->pid);
   sched();
 
   // Tidy up.
@@ -608,6 +608,7 @@ wakeup(void *chan)
       if (p->state == SLEEPING && p->chan == chan) {
           if(remove_from_list(&sleeping_head, p, &lock_sleeping_list)){
               p->state = RUNNABLE;
+              // printf("proc %d wokeup\n", p->pid);
               // p->cpu_num = update_cpu(p->cpu_num, 0);
               c = &cpus[p->cpu_num];
               add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
@@ -615,6 +616,9 @@ wakeup(void *chan)
       }
       release(&p->lock);
       curr_proc = next_proc;
+      if(curr_proc != -1) {
+        p = &proc[curr_proc];
+      }
     } while(curr_proc != -1);
   }
   else{
