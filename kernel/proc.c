@@ -122,6 +122,7 @@ allocproc(void)
   struct proc *p;
     int allocation = remove_first(&unused_head, &lock_unused_list);
     if(allocation == -1){
+      printf("No availble spot in table to allocate\n");
       return 0;
     }
 
@@ -176,11 +177,11 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
 
-  remove_from_list(&zombie_head, p, &lock_zombie_list); //sould we check for return value of -1???/?????????????????????
+  if(remove_from_list(&zombie_head, p, &lock_zombie_list) == 1){
+    p->state = UNUSED;
+    add_to_list(&unused_head, p, &lock_unused_list);
+  } 
 
-  p->state = UNUSED;
-
-  add_to_list(&unused_head, p, &lock_unused_list);
 }
 
 // Create a user page table for a given process,
@@ -477,6 +478,7 @@ scheduler(void)
       // to release its lock and then reacquire it
       // before jumping back to us.
       p->state = RUNNING;
+      // printf("Im Rinning -> %d\n", p->pid);
       c->proc = p;
       swtch(&c->context, &p->context);
 
@@ -635,7 +637,12 @@ kill(int pid)
       p->killed = 1;
       if(p->state == SLEEPING){
         // Wake process from sleep().
+        if(remove_from_list(&sleeping_head, p, &lock_sleeping_list) == 1){
         p->state = RUNNABLE;
+
+        struct cpu *c = &cpus[p->cpu_num];
+        add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
+        }
       }
       release(&p->lock);
       return 0;
@@ -750,7 +757,6 @@ add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock)
     // printf("moving to: %d", curr_node->next_proc_index);
   }
 
-  //result = cas(&curr_node->next_proc_index, -1, next_proc->proc_index) == 0;
   curr_node->next_proc_index = next_proc->proc_index;
   next_proc->next_proc_index = -1;
   release(&curr_node->proc_lock);
