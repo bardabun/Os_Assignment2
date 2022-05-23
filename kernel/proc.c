@@ -120,28 +120,16 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-
-    if(unused_head == -1){
+    int allocation = remove_first(&unused_head, &lock_unused_list);
+    if(allocation == -1){
       return 0;
     }
 
-    p=&proc[unused_head];
-    acquire(&p->lock);
-
-  // for(p = proc; p < &proc[NPROC]; p++) {
-  //   acquire(&p->lock);
-  //   if(p->state == UNUSED) {
-
-  //     goto found;
-  //   } else {
-  //     release(&p->lock);
-  //   }
-  // }
-  // return 0;
+  p=&proc[allocation];
+  acquire(&p->lock);
 
 // found:
   p->pid = allocpid();
-  remove_first(&unused_head, &lock_unused_list); //different from the origin
   p->state = USED;
 
   // Allocate a trapframe page.
@@ -482,24 +470,22 @@ scheduler(void)
     int proc_num = remove_first(&c->runnable_head, &c->lock_runnable_list);
     if(proc_num != -1){
       p = &proc[proc_num];
-    }
+    acquire(&p->lock);
+    if(p->state == RUNNABLE) {
+      // Switch to chosen process.  It is the process's job
+      // to release its lock and then reacquire it
+      // before jumping back to us.
+      p->state = RUNNING;
+      c->proc = p;
+      swtch(&c->context, &p->context);
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-      }
-      release(&p->lock);
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
     }
+    release(&p->lock);
+    }
+    
   }
 }
 
@@ -615,9 +601,9 @@ wakeup(void *chan)
     int curr_proc;
     do
     {
-      int next_proc = p->next_proc_index;
       acquire(&p->lock);
-      if (p->chan == chan) {
+      int next_proc = p->next_proc_index;
+      if (p->state == SLEEPING && p->chan == chan) {
           if(remove_from_list(&sleeping_head, p, &lock_sleeping_list)){
               p->state = RUNNABLE;
               // p->cpu_num = update_cpu(p->cpu_num, 0);
