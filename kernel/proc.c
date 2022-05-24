@@ -75,6 +75,7 @@ procinit(void)
   }
 
     for(c = cpus; c < &cpus[NCPU]; c++) {
+      c->counter= 0;
       c->runnable_head = -1;
   }
 }
@@ -128,14 +129,12 @@ allocproc(void)
   struct proc *p;
     int allocation = remove_first(&unused_head, &lock_unused_list);
     if(allocation == -1){
-      printf("No availble spot in table to allocate\n");
       return 0;
     }
 
   p=&proc[allocation];
   acquire(&p->lock);
 
-// found:
   p->pid = allocpid();
   p->state = USED;
 
@@ -612,7 +611,7 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
-void
+ void
 wakeup(void *chan)
 {
   struct proc *p;
@@ -631,8 +630,6 @@ wakeup(void *chan)
       if (p->state == SLEEPING && p->chan == chan) {
           if(remove_from_list(&sleeping_head, p, &lock_sleeping_list)){
               p->state = RUNNABLE;
-              // printf("proc %d wokeup\n", p->pid);
-              // p->cpu_num = update_cpu(p->cpu_num, 0);
               if(auto_balanced){
                 int cpu_num = 0;
                 struct cpu *c;
@@ -777,7 +774,6 @@ get_cpu()
   release(&p->lock);
   return cpu_num;
 }
-//void initlock(struct spinlock *, char *)
 
 void
 add_to_list(int* curr_proc_index, struct proc* next_proc, struct spinlock* lock) {
@@ -816,7 +812,7 @@ int remove_from_list(int* curr_proc_index, struct proc* proc_to_remove, struct s
   acquire(&proc_to_remove->proc_lock);
 
   if(*curr_proc_index == proc_to_remove->proc_index){
-      // *curr_proc_index = proc_to_remove->proc_index;
+      *curr_proc_index = proc_to_remove->next_proc_index;
       proc_to_remove->next_proc_index = -1;
       release(&proc_to_remove->proc_lock);
       release(lock);
@@ -861,7 +857,7 @@ int remove_first(int* curr_proc_index, struct spinlock* lock) {
       release(lock);
       return output_proc;
     }
-    //didn't find a proc to run in the listttt
+    //didn't find a proc to run in the list
     else{
 
       release(lock);
