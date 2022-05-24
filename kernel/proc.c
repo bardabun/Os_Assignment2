@@ -337,15 +337,17 @@ fork(void)
   np->parent = p;
   if(auto_balanced){
     int cpu_num = 0;
+    struct cpu *c;
     int min = cpus[cpu_num].counter;
-    for(int i = 1; i < CPUS; i++){  //<!!!!!!!!!!!!!!!!!!!
+    for(int i = 1; i < CPUS; i++){  
         if (min > cpus[i].counter){
             min = cpus[i].counter;
             cpu_num = i;
         }
     }
     np->cpu_num = cpu_num;
-    while(cas(&(&cpus[cpu_num])->counter, &cpus[cpu_num].counter, &cpus[cpu_num].counter + 1) != 0);
+    c = &cpus[cpu_num];
+    while(cas(&c->counter, c->counter, c->counter + 1) != 0);
 
   }
   else{
@@ -631,6 +633,22 @@ wakeup(void *chan)
               p->state = RUNNABLE;
               // printf("proc %d wokeup\n", p->pid);
               // p->cpu_num = update_cpu(p->cpu_num, 0);
+              if(auto_balanced){
+                int cpu_num = 0;
+                struct cpu *c;
+                int min = cpus[cpu_num].counter;
+                for(int i = 1; i < CPUS; i++){  
+                    if (min > cpus[i].counter){
+                        min = cpus[i].counter;
+                        cpu_num = i;
+                    }
+                }
+                if(p->cpu_num == cpu_num){
+                  c = &cpus[cpu_num];
+                  while(cas(&c->counter, c->counter, c->counter + 1) != 0);
+                }
+                p->cpu_num = cpu_num;
+              }
               c = &cpus[p->cpu_num];
               add_to_list(&c->runnable_head, p, &c->lock_runnable_list);
           }
